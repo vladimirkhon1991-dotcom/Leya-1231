@@ -701,12 +701,6 @@ async fn environment_permissions_follow_configuration_ownership() -> Result<()> 
             _ => None,
         })
         .context("owner turn context")?;
-    assert!(
-        turn_context
-            .workspace_roots
-            .as_ref()
-            .is_some_and(|roots| roots.contains(&owner_profile_workspace_root))
-    );
     assert_eq!(
         (
             turn_context.permission_profile,
@@ -807,14 +801,13 @@ async fn executor_profile_roots_survive_settings_restore_and_turn_recording() ->
             _ => None,
         })
         .context("recorded turn context")?;
-    // The rollout retains compiled permissions, not the unprojectable root list.
+    // The rollout retains compiled permissions.
     assert_eq!(
         (
             context.permission_profile,
             context.active_permission_profile,
-            context.workspace_roots
         ),
-        (Some(expected_profile), Some(active_profile), None)
+        (Some(expected_profile), Some(active_profile))
     );
     Ok(())
 }
@@ -1079,6 +1072,7 @@ async fn active_environment_update_waits_for_a_configured_executor_to_connect(
         .cwd
         .join("remote-workspace")?;
     let mut remote_selection = TurnEnvironmentSelection {
+        selected_capability_roots: Default::default(),
         environment_id: remote_environment_id.to_string(),
         cwd: remote_cwd.clone(),
         workspace_roots: vec![remote_cwd.clone()],
@@ -1235,6 +1229,7 @@ async fn deferred_executor_promotes_primary_environment_when_startup_completes()
     let test = builder.build_with_remote_and_local_env(&server).await?;
     let local_selection = local(test.config.cwd.clone());
     let remote_selection = TurnEnvironmentSelection {
+        selected_capability_roots: Default::default(),
         environment_id: REMOTE_ENVIRONMENT_ID.to_string(),
         cwd: PathUri::from_abs_path(&test.config.cwd),
         workspace_roots: vec![PathUri::from_abs_path(&test.config.cwd)],
@@ -2797,12 +2792,15 @@ async fn ready_before_selection_resolves_resumed_thread_capability_root_after_wa
         anyhow::Ok(())
     });
 
-    let selection = TurnEnvironmentSelection::new(TurnEnvironmentRequest {
-        environment_id: REMOTE_ENVIRONMENT_ID.to_string(),
-        cwd: PathUri::from_abs_path(&test.config.cwd),
-        workspace_roots: vec![PathUri::from_abs_path(&test.config.cwd)],
-        config: EnvironmentConfigState::FromThread,
-    });
+    let selection = TurnEnvironmentSelection::new(
+        TurnEnvironmentRequest {
+            environment_id: REMOTE_ENVIRONMENT_ID.to_string(),
+            cwd: PathUri::from_abs_path(&test.config.cwd),
+            workspace_roots: vec![PathUri::from_abs_path(&test.config.cwd)],
+            config: EnvironmentConfigState::FromThread,
+        },
+        std::slice::from_ref(&stale_root),
+    );
     let mut thread_extension_init = ExtensionDataInit::new();
     thread_extension_init.insert(vec![stale_root]);
     let resumed = test
@@ -3077,6 +3075,7 @@ async fn deferred_executor_spawn_agent_inherits_ready_step_environments(
     let owner_active_profile = ActivePermissionProfile::new("owner-read-only");
     let owner_profile_workspace_root = test.config.cwd.join("owner-profile-root");
     let remote_selection = TurnEnvironmentSelection {
+        selected_capability_roots: Default::default(),
         environment_id: REMOTE_ENVIRONMENT_ID.to_string(),
         cwd: PathUri::from_abs_path(&test.config.cwd),
         workspace_roots: vec![PathUri::from_abs_path(&test.config.cwd)],
@@ -3269,6 +3268,7 @@ async fn deferred_executor_guardian_uses_newly_ready_step_environment(
     let remote_denied_path = remote_cwd.join("private");
     let local_denied_path = local_cwd.canonicalize()?.join("private");
     let remote_selection = TurnEnvironmentSelection {
+        selected_capability_roots: Default::default(),
         environment_id: REMOTE_ENVIRONMENT_ID.to_string(),
         cwd: PathUri::from_abs_path(&remote_cwd),
         workspace_roots: vec![PathUri::from_abs_path(&remote_cwd)],
@@ -3772,6 +3772,7 @@ async fn exec_command_routes_to_selected_remote_environment() -> Result<()> {
         )
         .await?;
     let remote_selection = TurnEnvironmentSelection {
+        selected_capability_roots: Default::default(),
         environment_id: REMOTE_ENVIRONMENT_ID.to_string(),
         cwd: PathUri::from_abs_path(&remote_cwd),
         workspace_roots: vec![PathUri::from_abs_path(&remote_cwd)],
@@ -4090,6 +4091,7 @@ async fn remote_request_permissions_grant_unblocks_later_remote_exec() -> Result
         vec![
             local(local_cwd.path().abs()),
             TurnEnvironmentSelection {
+                selected_capability_roots: Default::default(),
                 environment_id: REMOTE_ENVIRONMENT_ID.to_string(),
                 cwd: PathUri::from_abs_path(&remote_cwd),
                 workspace_roots: vec![PathUri::from_abs_path(&remote_cwd)],
@@ -4247,6 +4249,7 @@ async fn apply_patch_freeform_routes_to_selected_remote_environment() -> Result<
         Some(vec![
             local(local_cwd.path().abs()),
             TurnEnvironmentSelection {
+                selected_capability_roots: Default::default(),
                 environment_id: REMOTE_ENVIRONMENT_ID.to_string(),
                 cwd: PathUri::from_abs_path(&remote_cwd),
                 workspace_roots: vec![PathUri::from_abs_path(&remote_cwd)],
@@ -4338,6 +4341,7 @@ async fn apply_patch_approvals_are_remembered_per_environment() -> Result<()> {
     let environments = vec![
         local(local_cwd.path().abs()),
         TurnEnvironmentSelection {
+            selected_capability_roots: Default::default(),
             environment_id: REMOTE_ENVIRONMENT_ID.to_string(),
             cwd: PathUri::from_abs_path(&remote_cwd),
             workspace_roots: vec![PathUri::from_abs_path(&remote_cwd)],
@@ -4546,6 +4550,7 @@ async fn apply_patch_intercepted_exec_command_routes_to_selected_remote_environm
         Some(vec![
             local(local_cwd.path().abs()),
             TurnEnvironmentSelection {
+                selected_capability_roots: Default::default(),
                 environment_id: REMOTE_ENVIRONMENT_ID.to_string(),
                 cwd: PathUri::from_abs_path(&remote_cwd),
                 workspace_roots: vec![PathUri::from_abs_path(&remote_cwd)],
