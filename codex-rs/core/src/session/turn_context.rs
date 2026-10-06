@@ -399,6 +399,13 @@ enum TurnContextBuildMode {
 }
 
 impl TurnContext {
+    /// Returns the resolved causal root for this admitted turn.
+    pub(crate) fn root_turn_id(&self) -> String {
+        self.turn_metadata_state
+            .root_turn_id()
+            .unwrap_or_else(|| self.sub_id.clone())
+    }
+
     /// Builds a review turn with shared session grants and fresh turn-local state.
     pub(super) fn for_review(
         &self,
@@ -521,6 +528,16 @@ impl TurnContext {
             .lock()
             .expect("turn permission grants lock poisoned")
             .strict_auto_review_enabled
+    }
+
+    pub(crate) fn attribution(&self) -> codex_history::TurnAttribution {
+        codex_history::TurnAttribution {
+            turn_id: self.sub_id.clone(),
+            turn_trigger: self.turn_metadata_state.current_turn_trigger(),
+            parent_turn_id: self.turn_metadata_state.parent_turn_id(),
+            initiating_agent_path: self.turn_metadata_state.initiating_agent_path().cloned(),
+            root_turn_id: self.turn_metadata_state.root_turn_id(),
+        }
     }
 
     /// Captures current model metadata without preparing a step.

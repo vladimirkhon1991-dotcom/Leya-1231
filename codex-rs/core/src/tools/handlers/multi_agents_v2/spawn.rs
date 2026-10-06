@@ -211,6 +211,8 @@ async fn handle_spawn_agent(
                 &turn.session_telemetry,
                 turn.config.apps_mcp_product_sku.as_deref(),
                 &err,
+                &call_id,
+                &turn.sub_id,
                 fork_mode.as_ref(),
                 MultiAgentVersion::V2,
             );
@@ -226,6 +228,8 @@ async fn handle_spawn_agent(
         &session,
         turn,
         SubAgentActivityItem {
+            model: Some(agent_snapshot.model.clone()),
+            reasoning_effort: agent_snapshot.reasoning_effort.clone(),
             id: call_id,
             agent_thread_id: new_thread_id,
             agent_path: new_agent_path.clone(),

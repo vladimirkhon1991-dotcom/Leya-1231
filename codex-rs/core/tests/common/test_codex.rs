@@ -1,4 +1,5 @@
 use codex_protocol::protocol::TurnEnvironmentRequest;
+use codex_protocol::protocol::TurnEnvironmentRequests;
 use std::future::Future;
 use std::io::ErrorKind;
 use std::mem::swap;
@@ -189,6 +190,11 @@ pub fn executor_path_uri(path: impl AsRef<Path>) -> Result<PathUri> {
 
 pub fn local_selections(cwd: AbsolutePathBuf) -> TurnEnvironmentSelections {
     TurnEnvironmentSelections::new(cwd.clone(), vec![local(cwd)])
+}
+
+/// Builds thread-settings input using the local test environment.
+pub fn local_requests(cwd: AbsolutePathBuf) -> TurnEnvironmentRequests {
+    TurnEnvironmentRequests::new(cwd.clone(), vec![local_request(cwd)])
 }
 
 #[derive(Debug)]
@@ -731,6 +737,30 @@ impl TestCodexBuilder {
             .await
     }
 
+    /// Restarts without changing the executor platform selected by the test process.
+    pub async fn restart_with_auto_env(
+        &mut self,
+        server: &MockServer,
+        previous: &TestCodex,
+    ) -> Result<TestCodex> {
+        let rollout_path = previous
+            .session_configured
+            .rollout_path
+            .clone()
+            .context("rollout path")?;
+        previous.codex.shutdown_and_wait().await?;
+        let base_url = format!("{}/v1", server.uri());
+        let test_env = test_env().await?;
+        Box::pin(self.build_with_home_and_base_url(
+            base_url,
+            Arc::clone(&previous.home),
+            Some(rollout_path),
+            test_env,
+            /*include_local_environment*/ false,
+        ))
+        .await
+    }
+
     async fn build_with_home_and_base_url(
         &mut self,
         base_url: String,
@@ -1227,7 +1257,8 @@ impl TestCodex {
                     text_elements: Vec::new(),
                 }])
                 .with_thread_settings(ThreadSettingsOverrides {
-                    environments: turn_environment_selections,
+                    environments: turn_environment_selections
+                        .map(TurnEnvironmentSelections::into_requests),
                     approval_policy: Some(approval_policy),
                     sandbox_policy: Some(sandbox_policy),
                     permission_profile,

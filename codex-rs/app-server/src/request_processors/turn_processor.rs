@@ -12,6 +12,7 @@ use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::ImageReference as CoreImageReference;
 use codex_protocol::protocol::AdditionalContextEntry as CoreAdditionalContextEntry;
 use codex_protocol::protocol::AdditionalContextKind as CoreAdditionalContextKind;
+use codex_protocol::protocol::TurnEnvironmentRequests;
 use codex_protocol::protocol::TurnSettingsUpdate;
 use codex_protocol::protocol::TurnSettingsUpdateOutcome;
 use codex_skills::system_cache_root_dir;
@@ -118,7 +119,7 @@ fn map_additional_context(
 
 #[derive(Default)]
 struct ThreadEnvironmentOverride {
-    environment_requests: Option<TurnEnvironmentSelections>,
+    environment_requests: Option<TurnEnvironmentRequests>,
     // Only default-environment updates replace the task's separately persisted root selection.
     runtime_workspace_roots: Option<Vec<AbsolutePathBuf>>,
 }
@@ -654,10 +655,12 @@ impl TurnRequestProcessor {
                     .with_thread_settings(thread_settings)
                     .on_start(TurnStartOptions {
                         turn_trigger: params.turn_trigger,
+                        parent_turn_id: params.parent_turn_id,
+                        initiating_agent_path: None,
+                        root_turn_id: params.root_turn_id,
                         final_output_json_schema: params.output_schema,
                         service_tier: params.service_tier_for_turn,
                         cyber_access_program: params.cyber_access_program.map(Into::into),
-                        ..Default::default()
                     })
                     .with_additional_context(additional_context)
                     .with_responses_metadata(params.responsesapi_client_metadata)
@@ -669,9 +672,15 @@ impl TurnRequestProcessor {
                 self.track_error_response(&request_id, &error, /*error_type*/ None);
                 error
             })?;
-        let (turn_id, started) = match submission {
-            TurnInputSubmission::Started { turn_id } => (turn_id, true),
-            TurnInputSubmission::Steered { turn_id } => (turn_id, false),
+        let (turn_id, root_turn_id, started) = match submission {
+            TurnInputSubmission::Started {
+                turn_id,
+                root_turn_id,
+            } => (turn_id, root_turn_id, true),
+            TurnInputSubmission::Steered {
+                turn_id,
+                root_turn_id,
+            } => (turn_id, root_turn_id, false),
             TurnInputSubmission::NotSubmitted { reason } => {
                 let error = if reason == NotSubmittedReason::ServerDraining {
                     crate::error_code::server_draining_error()
@@ -703,6 +712,7 @@ impl TurnRequestProcessor {
             .await;
         let turn = Turn {
             id: turn_id,
+            root_turn_id: Some(root_turn_id),
             items: vec![],
             items_view: TurnItemsView::NotLoaded,
             error: None,
@@ -741,12 +751,9 @@ impl TurnRequestProcessor {
                 },
             };
             return ThreadEnvironmentOverride {
-                environment_requests: Some(TurnEnvironmentSelections::new(
+                environment_requests: Some(TurnEnvironmentRequests::new(
                     legacy_fallback_cwd,
-                    environment_requests
-                        .into_iter()
-                        .map(TurnEnvironmentSelection::new)
-                        .collect(),
+                    environment_requests,
                 )),
                 ..Default::default()
             };
@@ -768,12 +775,9 @@ impl TurnRequestProcessor {
             .thread_manager
             .default_environment_requests(&legacy_fallback_cwd, &workspace_roots);
         ThreadEnvironmentOverride {
-            environment_requests: Some(TurnEnvironmentSelections::new(
+            environment_requests: Some(TurnEnvironmentRequests::new(
                 legacy_fallback_cwd,
-                environment_requests
-                    .into_iter()
-                    .map(TurnEnvironmentSelection::new)
-                    .collect(),
+                environment_requests,
             )),
             runtime_workspace_roots: Some(workspace_roots),
         }
@@ -1409,6 +1413,7 @@ impl TurnRequestProcessor {
 
         Turn {
             id: turn_id,
+            root_turn_id: None,
             items,
             items_view: TurnItemsView::NotLoaded,
             error: None,

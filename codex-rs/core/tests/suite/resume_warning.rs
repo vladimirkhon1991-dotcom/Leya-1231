@@ -62,6 +62,7 @@ fn resume_history(
         conversation_id: ThreadId::default(),
         history: Arc::new(vec![
             RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
+                turn_attribution: None,
                 turn_id: turn_id.clone(),
                 root_turn_id: None,
                 trace_id: None,
@@ -79,6 +80,7 @@ fn resume_history(
             })),
             RolloutItem::TurnContext(turn_ctx),
             RolloutItem::EventMsg(EventMsg::TurnComplete(TurnCompleteEvent {
+                root_turn_id: None,
                 turn_id,
                 last_agent_message: None,
                 error: None,

@@ -718,6 +718,7 @@ fn truncates_before_requested_user_message() {
             ends_mid_turn: false,
             active_turn_id: None,
             active_turn_started_at: None,
+            active_turn_root_id: None,
             active_turn_start_index: None,
         },
     );
@@ -744,6 +745,7 @@ fn truncates_before_requested_user_message() {
             ends_mid_turn: false,
             active_turn_id: None,
             active_turn_started_at: None,
+            active_turn_root_id: None,
             active_turn_start_index: None,
         },
     );
@@ -769,6 +771,7 @@ fn out_of_range_truncation_drops_only_unfinished_suffix_mid_turn() {
             ends_mid_turn: true,
             active_turn_id: None,
             active_turn_started_at: None,
+            active_turn_root_id: None,
             active_turn_start_index: None,
         },
     );
@@ -799,6 +802,7 @@ fn out_of_range_truncation_drops_pre_user_active_turn_prefix() {
         RolloutItem::ResponseItem(user_msg("u1").into()),
         RolloutItem::ResponseItem(assistant_msg("a1").into()),
         RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
+            turn_attribution: None,
             turn_id: "turn-2".to_string(),
             root_turn_id: None,
             trace_id: None,
@@ -817,6 +821,7 @@ fn out_of_range_truncation_drops_pre_user_active_turn_prefix() {
             ends_mid_turn: true,
             active_turn_id: Some("turn-2".to_string()),
             active_turn_started_at: None,
+            active_turn_root_id: None,
             active_turn_start_index: Some(2),
         },
     );
@@ -862,6 +867,7 @@ async fn ignores_session_prefix_messages_when_truncating() {
             ends_mid_turn: false,
             active_turn_id: None,
             active_turn_started_at: None,
+            active_turn_root_id: None,
             active_turn_start_index: None,
         },
     );
@@ -2771,6 +2777,7 @@ fn interrupted_fork_snapshot_appends_interrupt_boundary() {
             append_interrupted_boundary(
                 committed_history,
                 /*turn_id*/ None,
+                /*root_turn_id*/ None,
                 /*started_at*/ None,
                 InterruptedTurnHistoryMarker::ContextualUser,
             )
@@ -2781,6 +2788,7 @@ fn interrupted_fork_snapshot_appends_interrupt_boundary() {
             RolloutItem::ResponseItem(user_msg("hello").into()),
             RolloutItem::ResponseItem(contextual_user_interrupted_marker().into()),
             RolloutItem::EventMsg(EventMsg::TurnAborted(TurnAbortedEvent {
+                root_turn_id: None,
                 turn_id: None,
                 started_at: None,
                 reason: TurnAbortReason::Interrupted,
@@ -2796,6 +2804,7 @@ fn interrupted_fork_snapshot_appends_interrupt_boundary() {
             append_interrupted_boundary(
                 InitialHistory::New,
                 /*turn_id*/ None,
+                /*root_turn_id*/ None,
                 /*started_at*/ None,
                 InterruptedTurnHistoryMarker::ContextualUser,
             )
@@ -2805,6 +2814,7 @@ fn interrupted_fork_snapshot_appends_interrupt_boundary() {
         serde_json::to_value(vec![
             RolloutItem::ResponseItem(contextual_user_interrupted_marker().into()),
             RolloutItem::EventMsg(EventMsg::TurnAborted(TurnAbortedEvent {
+                root_turn_id: None,
                 turn_id: None,
                 started_at: None,
                 reason: TurnAbortReason::Interrupted,
@@ -2827,6 +2837,7 @@ fn disabled_interrupted_fork_snapshot_appends_only_interrupt_event() {
             append_interrupted_boundary(
                 committed_history,
                 /*turn_id*/ None,
+                /*root_turn_id*/ None,
                 /*started_at*/ None,
                 InterruptedTurnHistoryMarker::Disabled,
             )
@@ -2836,6 +2847,7 @@ fn disabled_interrupted_fork_snapshot_appends_only_interrupt_event() {
         serde_json::to_value(vec![
             RolloutItem::ResponseItem(user_msg("hello").into()),
             RolloutItem::EventMsg(EventMsg::TurnAborted(TurnAbortedEvent {
+                root_turn_id: None,
                 turn_id: None,
                 started_at: None,
                 reason: TurnAbortReason::Interrupted,
@@ -2851,6 +2863,7 @@ fn disabled_interrupted_fork_snapshot_appends_only_interrupt_event() {
             append_interrupted_boundary(
                 InitialHistory::New,
                 /*turn_id*/ None,
+                /*root_turn_id*/ None,
                 /*started_at*/ None,
                 InterruptedTurnHistoryMarker::Disabled,
             )
@@ -2859,6 +2872,7 @@ fn disabled_interrupted_fork_snapshot_appends_only_interrupt_event() {
         .expect("serialize disabled interrupted empty fork history"),
         serde_json::to_value(vec![RolloutItem::EventMsg(EventMsg::TurnAborted(
             TurnAbortedEvent {
+                root_turn_id: None,
                 turn_id: None,
                 started_at: None,
                 reason: TurnAbortReason::Interrupted,
@@ -2878,6 +2892,7 @@ fn interrupted_snapshot_is_not_mid_turn() {
         RolloutItem::ResponseItem(assistant_msg("partial").into()),
         RolloutItem::ResponseItem(contextual_user_interrupted_marker().into()),
         RolloutItem::EventMsg(EventMsg::TurnAborted(TurnAbortedEvent {
+            root_turn_id: None,
             turn_id: Some("turn-1".to_string()),
             started_at: None,
             reason: TurnAbortReason::Interrupted,
@@ -2893,6 +2908,7 @@ fn interrupted_snapshot_is_not_mid_turn() {
             ends_mid_turn: false,
             active_turn_id: None,
             active_turn_started_at: None,
+            active_turn_root_id: None,
             active_turn_start_index: None,
         },
     );
@@ -2950,6 +2966,7 @@ fn completed_legacy_event_history_is_not_mid_turn() {
             ends_mid_turn: false,
             active_turn_id: None,
             active_turn_started_at: None,
+            active_turn_root_id: None,
             active_turn_start_index: None,
         },
     );
@@ -2975,6 +2992,7 @@ fn mixed_response_and_legacy_user_event_history_is_mid_turn() {
             ends_mid_turn: true,
             active_turn_id: None,
             active_turn_started_at: None,
+            active_turn_root_id: None,
             active_turn_start_index: None,
         },
     );
@@ -3059,6 +3077,7 @@ async fn interrupted_fork_snapshot_does_not_synthesize_turn_id_for_legacy_histor
     .expect("serialize interrupted marker");
     let interrupted_abort_json = serde_json::to_value(RolloutItem::EventMsg(
         EventMsg::TurnAborted(TurnAbortedEvent {
+            root_turn_id: None,
             turn_id: expected_turn_id,
             started_at: None,
             reason: TurnAbortReason::Interrupted,
@@ -3125,6 +3144,7 @@ async fn interrupted_fork_snapshot_preserves_explicit_turn_id() {
             history_mode: Some(ThreadHistoryMode::Legacy),
             initial_history: InitialHistory::Forked(vec![
                 RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
+                    turn_attribution: None,
                     turn_id: "turn-explicit".to_string(),
                     root_turn_id: None,
                     trace_id: None,
@@ -3153,6 +3173,7 @@ async fn interrupted_fork_snapshot_preserves_explicit_turn_id() {
             ends_mid_turn: true,
             active_turn_id: Some("turn-explicit".to_string()),
             active_turn_started_at: None,
+            active_turn_root_id: None,
             active_turn_start_index: Some(1),
         },
     );
@@ -3182,6 +3203,7 @@ async fn interrupted_fork_snapshot_preserves_explicit_turn_id() {
         matches!(
             item,
             RolloutItem::EventMsg(EventMsg::TurnAborted(TurnAbortedEvent {
+                root_turn_id: None,
                 turn_id: Some(turn_id),
                 started_at: None,
                 reason: TurnAbortReason::Interrupted,

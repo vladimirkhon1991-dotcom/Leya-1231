@@ -100,6 +100,7 @@ pub use crate::approvals::NetworkPolicyRuleAction;
 pub use crate::environment::EnvironmentConfig;
 pub use crate::environment::EnvironmentConfigState;
 pub use crate::environment::TurnEnvironmentRequest;
+pub use crate::environment::TurnEnvironmentRequests;
 pub use crate::environment::TurnEnvironmentSelection;
 pub use crate::environment::TurnEnvironmentSelections;
 pub use crate::environment::has_full_access;
@@ -458,7 +459,7 @@ pub struct TurnSettingsUpdate {
     /// Replaces the selection for subsequent steps, without changing future turns.
     /// Environments may inherit the running turn's defaults or provide their own configuration,
     /// which can be pending. An already-selected environment with its own cannot switch back.
-    pub environments: Option<Vec<TurnEnvironmentSelection>>,
+    pub environments: Option<Vec<TurnEnvironmentRequest>>,
     pub model: Option<String>,
     /// `None` preserves the selection; `Some(None)` clears it.
     pub effort: Option<Option<ReasoningEffortConfig>>,
@@ -482,10 +483,20 @@ pub enum TurnSettingsUpdateOutcome {
 
 /// Thread-settings overrides that can be applied before user input or on their
 /// own. Standalone updates change the settings inherited by future turns.
-#[derive(Debug, Clone, Default, PartialEq)]
+// Diagnostics retain requested policy categories, never paths or instruction payloads.
+#[derive(derive_more::Debug, Clone, Default, PartialEq)]
+#[debug(
+    "ThreadSettingsOverrides {{ approval_policy: {approval_policy:?}, approvals_reviewer: {approvals_reviewer:?}, sandbox_policy: {:?}, permission_profile: {:?} }}",
+    sandbox_policy.as_ref().map(tracing::field::display),
+    permission_profile.as_ref().map(|profile| match profile {
+        PermissionProfile::Managed { .. } => "managed",
+        PermissionProfile::Disabled => "disabled",
+        PermissionProfile::External { .. } => "external",
+    }),
+)]
 pub struct ThreadSettingsOverrides {
     /// Updated fallback `cwd` and environments supplied together as a complete pair.
-    pub environments: Option<TurnEnvironmentSelections>,
+    pub environments: Option<TurnEnvironmentRequests>,
 
     /// Updated top-level runtime workspace roots for default environments.
     /// Explicit environment requests own their workspace roots separately.
@@ -559,7 +570,8 @@ pub struct AdditionalContextEntry {
 }
 
 /// Submission operation
-#[derive(Debug)]
+// Keep diagnostic fields explicit so new payload fields do not enter logs by default.
+#[derive(derive_more::Debug)]
 #[allow(clippy::large_enum_variant)]
 #[non_exhaustive]
 pub enum Op {
@@ -569,6 +581,7 @@ pub enum Op {
 
     /// Interrupt the named turn only if no input is queued for it.
     /// The decision is acknowledged before cancellation finishes.
+    #[debug("InterruptIfNoPendingInput {{ turn_id: {turn_id:?} }}")]
     InterruptIfNoPendingInput {
         turn_id: String,
         reply: oneshot::Sender<bool>,
@@ -579,15 +592,19 @@ pub enum Op {
     CleanBackgroundTerminals,
 
     /// Start a realtime conversation stream.
+    #[debug("RealtimeConversationStart {{ session_id: {:?}, version: {:?}, output_modality: {:?} }}", _0.realtime_session_id, _0.version, _0.output_modality)]
     RealtimeConversationStart(ConversationStartParams),
 
     /// Send audio input to the running realtime conversation stream.
+    #[debug("RealtimeConversationAudio {{ item_id: {:?}, sample_rate: {}, num_channels: {}, samples_per_channel: {:?} }}", _0.frame.item_id, _0.frame.sample_rate, _0.frame.num_channels, _0.frame.samples_per_channel)]
     RealtimeConversationAudio(ConversationAudioParams),
 
     /// Send text input to the running realtime conversation stream.
+    #[debug("RealtimeConversationText {{ role: {:?} }}", _0.role)]
     RealtimeConversationText(ConversationTextParams),
 
     /// Append speakable text to the running realtime conversation stream.
+    #[debug("RealtimeConversationSpeech")]
     RealtimeConversationSpeech(ConversationSpeechParams),
 
     /// Close the running realtime conversation stream.
@@ -597,6 +614,7 @@ pub enum Op {
     RealtimeConversationListVoices,
 
     /// Submit turn input using the requested routing behavior.
+    #[debug("TurnInput {{ requested_settings: {:?} }}", request.thread_settings)]
     TurnInput {
         request: Box<TurnInputRequest>,
         mode: TurnInputMode,
@@ -604,6 +622,7 @@ pub enum Op {
     },
 
     /// Resume an interrupted regular turn.
+    #[debug("RecoverTurn {{ requested_settings: {thread_settings:?} }}")]
     RecoverTurn {
         thread_settings: ThreadSettingsOverrides,
         start_options: TurnStartOptions,
@@ -611,6 +630,7 @@ pub enum Op {
     },
 
     /// Stop the active root turn without recording a terminal turn event.
+    #[debug("SuspendTurnAndShutdown")]
     SuspendTurnAndShutdown {
         reply: oneshot::Sender<CodexResult<SuspendTurnOutcome>>,
     },
@@ -619,6 +639,7 @@ pub enum Op {
     ///
     /// This uses the same submission queue as turn starts so app-server can
     /// preserve caller order between both kinds of mutation.
+    #[debug("ThreadSettings {{ requested_settings: {thread_settings:?} }}")]
     ThreadSettings {
         /// Sparse thread-settings overrides to apply.
         thread_settings: ThreadSettingsOverrides,
@@ -629,6 +650,7 @@ pub enum Op {
 
     /// Update only the named running turn, without changing future settings.
     /// The reply reports the actual publication or why it did not occur.
+    #[debug("TurnSettings {{ turn_id: {turn_id:?}, requested_approvals_reviewer: {:?} }}", update.approvals_reviewer)]
     TurnSettings {
         turn_id: String,
         update: TurnSettingsUpdate,
@@ -637,12 +659,14 @@ pub enum Op {
 
     /// Inter-agent communication that should be recorded as agent-message history
     /// while still using the normal thread submission lifecycle.
+    #[debug("InterAgentCommunication {{ id: {:?}, author: {:?}, recipient: {:?}, trigger_turn: {} }}", communication.id, communication.author, communication.recipient, communication.trigger_turn)]
     InterAgentCommunication {
         communication: InterAgentCommunication,
         start_options: TurnStartOptions,
     },
 
     /// Approve a command execution
+    #[debug("ExecApproval {{ id: {id:?}, turn_id: {turn_id:?}, decision: {} }}", decision.to_opaque_string())]
     ExecApproval {
         /// The id of the submission we are approving
         id: String,
@@ -653,6 +677,7 @@ pub enum Op {
     },
 
     /// Approve a code patch
+    #[debug("PatchApproval {{ id: {id:?}, decision: {} }}", decision.to_opaque_string())]
     PatchApproval {
         /// The id of the submission we are approving
         id: String,
@@ -661,6 +686,7 @@ pub enum Op {
     },
 
     /// Resolve an MCP elicitation request.
+    #[debug("ResolveElicitation {{ request_id: {request_id:?}, decision: {decision:?} }}")]
     ResolveElicitation {
         /// Name of the MCP server that issued the request.
         server_name: String,
@@ -675,6 +701,7 @@ pub enum Op {
     },
 
     /// Resolve a request_user_input tool call.
+    #[debug("UserInputAnswer {{ id: {id:?} }}")]
     UserInputAnswer {
         /// Turn id for the in-flight request.
         id: String,
@@ -683,6 +710,7 @@ pub enum Op {
     },
 
     /// Resolve a request_permissions tool call.
+    #[debug("RequestPermissionsResponse {{ id: {id:?}, scope: {:?}, strict_auto_review: {} }}", response.scope, response.strict_auto_review)]
     RequestPermissionsResponse {
         /// Call id for the in-flight request.
         id: String,
@@ -691,6 +719,7 @@ pub enum Op {
     },
 
     /// Resolve a dynamic tool call request.
+    #[debug("DynamicToolResponse {{ id: {id:?}, success: {} }}", response.success)]
     DynamicToolResponse {
         /// Call id for the in-flight request.
         id: String,
@@ -716,12 +745,24 @@ pub enum Op {
     ///
     /// This persists thread-level memory mode metadata without involving the
     /// model.
+    #[debug("SetThreadMemoryMode {{ mode: {mode:?} }}")]
     SetThreadMemoryMode { mode: ThreadMemoryMode },
 
     /// Request a code review from the agent.
+    #[debug(
+        "Review {{ target: {} }}",
+        match &review_request.target {
+            ReviewTarget::UncommittedChanges => "uncommitted_changes",
+            ReviewTarget::BaseBranch { .. } => "base_branch",
+            ReviewTarget::Commit { .. } => "commit",
+            ReviewTarget::Custom { .. } => "custom",
+        },
+    )]
     Review { review_request: ReviewRequest },
 
     /// Record that the user approved one retry of a concrete Guardian-denied action.
+    // Assessment events are transient; retain the review identity when approving a retry.
+    #[debug("ApproveGuardianDeniedAction {{ review_id: {:?}, target_item_id: {:?}, turn_id: {:?}, status: {:?} }}", event.id, event.target_item_id, event.turn_id, event.status)]
     ApproveGuardianDeniedAction { event: GuardianAssessmentEvent },
 
     /// Request to shut down codex instance.
@@ -732,6 +773,7 @@ pub enum Op {
     /// The command string is executed using the user's default shell and may
     /// include shell syntax (pipes, redirects, etc.). Output is streamed via
     /// `ExecCommand*` events and the UI regains control upon `TurnComplete`.
+    #[debug("RunUserShellCommand {{ timeout_ms: {timeout_ms:?} }}")]
     RunUserShellCommand {
         /// The raw command string after '!'
         command: String,
@@ -2130,6 +2172,10 @@ pub struct ContextCompactedEvent;
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]
 pub struct TurnCompleteEvent {
+    /// Resolved causal root for this turn; absent on older or synthetic events.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub root_turn_id: Option<String>,
     pub turn_id: String,
     pub last_agent_message: Option<String>,
     /// Terminal error details when the turn completed unsuccessfully.
@@ -2156,6 +2202,11 @@ pub struct TurnCompleteEvent {
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]
 pub struct TurnStartedEvent {
+    /// Provenance of a regular turn, persisted before startup work can be suspended.
+    /// Absent on older records and non-regular tasks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub turn_attribution: Option<crate::turn_input::TurnAttribution>,
     pub turn_id: String,
     /// ID of the originating turn in the root thread; equals `turn_id` for root turns.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -3280,8 +3331,7 @@ pub struct TurnContextNetworkItem {
 pub struct TurnContextItem {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub turn_id: Option<String>,
-    /// Root turn that owns this subagent turn's attribution.
-    /// Only set for subagent turns; persisted so resume keeps the scope frozen at turn start.
+    /// Root turn that owns this turn's attribution, retained across recovery.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub root_turn_id: Option<String>,
     /// Plugin selection captured for this turn. Absent in older histories.
@@ -4221,6 +4271,10 @@ pub struct Chunk {
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]
 pub struct TurnAbortedEvent {
+    /// Resolved causal root for this turn; absent on older or synthetic events.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub root_turn_id: Option<String>,
     pub turn_id: Option<String>,
     pub reason: TurnAbortReason,
     /// Optional error describing why the turn was interrupted.
@@ -4368,6 +4422,10 @@ pub enum SubAgentActivityKind {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
 pub struct SubAgentActivityEvent {
+    /// Resolved model at sub-agent creation; absent from older records and other activities.
+    pub model: Option<String>,
+    /// Resolved reasoning effort at sub-agent creation, when known.
+    pub reasoning_effort: Option<ReasoningEffortConfig>,
     pub event_id: String,
     #[serde(default)]
     pub occurred_at_ms: i64,
@@ -6099,9 +6157,12 @@ mod tests {
 
         match event {
             EventMsg::TurnAborted(TurnAbortedEvent {
-                turn_id, reason, ..
+                turn_id,
+                root_turn_id,
+                reason,
+                ..
             }) => {
-                assert_eq!(turn_id, None);
+                assert_eq!((turn_id, root_turn_id), (None, None));
                 assert_eq!(reason, TurnAbortReason::Interrupted);
             }
             _ => panic!("expected turn_aborted event"),

@@ -159,6 +159,7 @@ async fn steering_does_not_wait_for_realtime_history() {
         assert_eq!(
             submission,
             TurnInputSubmission::Steered {
+                root_turn_id: turn_context.sub_id.clone(),
                 turn_id: turn_context.sub_id.clone()
             }
         );
@@ -178,7 +179,7 @@ async fn accepted_input_applies_thread_settings() {
             text_elements: Vec::new(),
         }])
         .with_thread_settings(ThreadSettingsOverrides {
-            environments: Some(local_selections(config.cwd.clone())),
+            environments: Some(local_selections(config.cwd.clone()).into_requests()),
             approval_policy: Some(config.permissions.approval_policy.value()),
             approvals_reviewer: Some(codex_config::types::ApprovalsReviewer::AutoReview),
             sandbox_policy: Some(config.legacy_sandbox_policy()),
@@ -555,7 +556,7 @@ async fn automatic_admission_rechecks_plan_mode_without_committing_sparse_settin
     let overrides = ThreadSettingsOverrides {
         model: Some("automatic-model-must-not-be-applied".to_string()),
         service_tier: Some(Some(ServiceTier::Fast.request_value().to_string())),
-        environments: Some(proposed_environments.clone()),
+        environments: Some(proposed_environments.clone().into_requests()),
         approval_policy: Some(AskForApproval::Never),
         approvals_reviewer: Some(ApprovalsReviewer::AutoReview),
         ..Default::default()
@@ -922,6 +923,7 @@ async fn steer_only_enforces_expected_turn_id() {
     assert_eq!(
         submission,
         TurnInputSubmission::Steered {
+            root_turn_id: turn_context.sub_id.clone(),
             turn_id: turn_context.sub_id.clone()
         }
     );
