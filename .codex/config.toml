@@ -1,0 +1,10 @@
+#:schema https://developers.openai.com/codex/config-schema.json
+
+# Shared workspace defaults for Codex CLI and the VS Code extension.
+approval_policy = "on-request"
+approvals_reviewer = "auto_review"
+sandbox_mode = "workspace-write"
+web_search = "live"
+
+[sandbox_workspace_write]
+network_access = true
