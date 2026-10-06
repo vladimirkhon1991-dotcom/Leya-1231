@@ -39,8 +39,8 @@ log_error() {
 # STEP 1: Verify we're in the right location
 # =============================================================================
 log_step "Verifying repository structure..."
-if [ ! -f "Cargo.toml" ] || [ ! -d "codex-rs" ]; then
-    log_error "Not in Leya-1231 root directory. Please run from repo root."
+if [ ! -d "codex-rs" ] || [ ! -f "codex-rs/Cargo.toml" ]; then
+    log_error "codex-rs/Cargo.toml not found. Run this from Leya-1231 root directory."
 fi
 log_success "Repository structure verified"
 
@@ -76,7 +76,7 @@ CARGO_TERM_QUIET=true cargo install --locked cargo-nextest 2>/dev/null || log_wa
 log_success "Cargo tools ready"
 
 # =============================================================================
-# STEP 5: Navigate to workspace and clean build artifacts (optional optimization)
+# STEP 5: Navigate to workspace
 # =============================================================================
 log_step "Preparing workspace..."
 cd codex-rs
